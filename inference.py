@@ -153,16 +153,20 @@ def detect(im, model, transform, filename, plot=False):
     detections = []
     prob = probas[keep]
     boxes = outputs['pred_boxes'][0, keep]
+
+    file_contents = ""
     for p, (x1, y1, x2, y2) in zip(prob, boxes.tolist()):
         cl = p.argmax()
         inference_class = CLASSES[cl]
         conf = p[cl]
         detections.append([x1, y1, x2, y2, conf, inference_class])
+        file_contents += f"{cl - 1} {x1} {y1} {x2} {y2}\n"
 
-        # save inference result
-        file_path = os.path.join(args.inference_image_dir, 'label', filename.split('.')[0] + '.txt')
-        with open(file_path, 'w') as file:
-            file.write(f"{cl} {x1} {y1} {x2} {y2}\n")
+    # save inference result
+    file_path = os.path.join(args.inference_image_dir, 'label_detr', filename.split('.')[0] + '.txt')
+    with open(file_path, 'w') as file:
+        file.write(file_contents)
+        # file.write(f"{cl} {x1} {y1} {x2} {y2}\n")
 
     if plot:
         plt.figure(figsize=(16,10))
@@ -191,7 +195,8 @@ if __name__ == '__main__':
 
     if not os.path.exists(args.inference_image_dir):
         raise Exception(f"❌ {args.inference_image_dir} does not exist")
-    os.makedirs(args.inference_image_dir + '/label', exist_ok=True)
+    os.makedirs(args.inference_image_dir + '/label_detr', exist_ok=True)
+    os.makedirs(args.inference_image_dir + '/label_dino', exist_ok=True)
 
     # load detr
     detr, criterion, postprocessors = build_model(args)
@@ -229,9 +234,11 @@ if __name__ == '__main__':
         T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ])
 
+    # Inference from DINO
     dataset_val = build_dataset(image_set='val', args=args_dino)
 
-    for image, targets in dataset_val:
+    for idx, (image, targets) in enumerate(dataset_val):
+        filename = dataset_val.get_file_name(idx)
         output = dino.cuda()(image[None].cuda())
         output = postprocessors['bbox'](output, torch.Tensor([[1.0, 1.0]]).cuda())[0]
         scores = output['scores']
@@ -239,30 +246,22 @@ if __name__ == '__main__':
         boxes = box_ops.box_xyxy_to_cxcywh(output['boxes'])
         select_mask = scores > threshold
         box_label = [CLASSES[int(item)] for item in labels[select_mask]]
-        print(f"👀 Detect {targets['image_id']}: {box_label}")
+        cnt = Counter(box_label)
+        print(f"🦕 (DINO {idx}/{len(dataset_val)}) Detect {filename}: {[f'{k}: {v}' for k, v in cnt.items()]}")
+        # save inference result
+        file_path = os.path.join(args.inference_image_dir, 'label_dino', filename.split('.')[0] + '.txt')
+        with open(file_path, 'w') as file:
+            for i in range(len(box_label)):
+                file.write(f"{labels[select_mask][i] - 1} {boxes[i][0]} {boxes[i][1]} {boxes[i][2]} {boxes[i][3]}\n")
 
-
-    # open image and inference
-    for filename in os.listdir(args.inference_image_dir):
-        file_path = os.path.join(args.inference_image_dir, filename)
-        if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
-            with Image.open(file_path) as img:
-                    # inference from detr
-                    detections_detr = detect(img, detr, transform, filename, args.inference_image_save)
-                    cnt = Counter([d[-1] for d in detections_detr])
-                    print(f"👀 Detect {filename}: {[f'{k}: {v}' for k, v in cnt.items()]}")
-
-                    # inference from dino
-                    img_tensor = T.ToTensor()(img)
-                    detections_dino = dino.cuda()(img_tensor[None].cuda())
-                    detections_dino = postprocessors['bbox'](detections_dino, torch.Tensor([[1.0, 1.0]]).cuda())[0]
-
-                    scores, labels = detections_dino['scores'], detections_dino['labels']
-                    boxes = box_ops.box_xyxy_to_cxcywh(detections_dino['boxes'])
-                    select_mask = scores > threshold
-                    box_label = [id2name[int(item) - 1] for item in labels[select_mask]]
-                    # print(f"scores: {scores}")
-                    print(f"boxes[select_mask]: {boxes[select_mask]}")
-                    print(f"box_label: {box_label}")
-                    print(f"scores[select_mask]: {scores[select_mask]}")
-                    
+    # Inference from DETR
+    image_paths = [os.path.join(args.inference_image_dir, file) 
+                for file in os.listdir(args.inference_image_dir)
+                if os.path.splitext(file)[1].lower() in ('.png', '.jpg', '.jpeg')]    
+    total_image_count = len(os.listdir(args.inference_image_dir))
+    for idx, file_path in enumerate(image_paths):
+        with Image.open(file_path) as img:
+            filename = os.path.splitext(file_path)[0].split('/')[-1]
+            detections_detr = detect(img, detr, transform, filename, args.inference_image_save) # inference from detr
+            cnt = Counter([d[-1] for d in detections_detr])
+            print(f"👀 (DETR {idx}/{len(image_paths)}) Detect {filename}: {[f'{k}: {v}' for k, v in cnt.items()]}")

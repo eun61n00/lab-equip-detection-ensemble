@@ -339,6 +339,11 @@ class CocoDetection(torchvision.datasets.CocoDetection):
         for item in self.aux_target_hacks:
             if isinstance(item, target_class):
                 return item
+        
+    def get_file_name(self, idx):
+        image_id = self.ids[idx]
+        file_name = self.coco.loadImgs(image_id)[0]['file_name']
+        return file_name
 
     def __getitem__(self, idx):
         """
