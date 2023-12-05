@@ -59,7 +59,7 @@ class COCOVisualizer():
     def __init__(self) -> None:
         pass
 
-    def visualize(self, img, tgt, caption=None, dpi=300, savedir=None, show_in_console=True):
+    def visualize(self, img, tgt, caption=None, dpi=300, savedir=None, show_in_console=True, filename=None):
         """
         img: tensor(3, H, W)
         tgt: make sure they are all on cpu.
@@ -76,10 +76,11 @@ class COCOVisualizer():
             plt.show()
 
         if savedir is not None:
-            if caption is None:
-                savename = '{}/{}-{}.png'.format(savedir, int(tgt['image_id']), str(datetime.datetime.now()).replace(' ', '-'))
-            else:
-                savename = '{}/{}-{}-{}.png'.format(savedir, caption, int(tgt['image_id']), str(datetime.datetime.now()).replace(' ', '-'))
+            # if caption is None:
+            #     savename = '{}/{}-{}.png'.format(savedir, int(tgt['image_id']), str(datetime.datetime.now()).replace(' ', '-'))
+            # else:
+            #     savename = '{}/{}-{}-{}.png'.format(savedir, caption, int(tgt['image_id']), str(datetime.datetime.now()).replace(' ', '-'))
+            savename = '{}/{}.png'.format(savedir, filename)
             print("savename: {}".format(savename))
             os.makedirs(os.path.dirname(savename), exist_ok=True)
             plt.savefig(savename)
@@ -112,7 +113,7 @@ class COCOVisualizer():
 
         p = PatchCollection(polygons, facecolor=color, linewidths=0, alpha=0.1)
         ax.add_collection(p)
-        p = PatchCollection(polygons, facecolor='none', edgecolors=color, linewidths=2)
+        p = PatchCollection(polygons, facecolor='none', edgecolors=color, linewidths=0.5)
         ax.add_collection(p)
 
 
@@ -127,7 +128,7 @@ class COCOVisualizer():
             for idx, (bl, score) in enumerate(zip(tgt['box_label'], tgt['scores'])):
                 _string = f"{bl} {score:.2f}"  # Confidence score formatted to two decimal places
                 bbox_x, bbox_y, bbox_w, bbox_h = boxes[idx]
-                ax.text(bbox_x, bbox_y, _string, color='black', bbox={'facecolor': color[idx], 'alpha': 0.6, 'pad': 1})
+                ax.text(bbox_x, bbox_y, _string, color='black', bbox={'facecolor': color[idx], 'alpha': 0.6, 'pad': 0.3}, fontsize=5)
 
         if 'caption' in tgt:
             ax.set_title(tgt['caption'], wrap=True)
