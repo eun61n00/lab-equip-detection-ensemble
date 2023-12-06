@@ -216,4 +216,5 @@ if __name__ == '__main__':
         #         print(f"    *Wrong Inference (DINO {idx}/{len(dataset_val)}) Ground Truth {filename}:  {[f'{k}: {v}' for k, v in gt_cnt.items()]}")
 
     # Inference from YOLO
+    os.system("git clone https://github.com/WongKinYiu/yolov7")
     os.system(f"python ../yolov7/detect.py --weights {args.yolo_weights} --conf 0.25 --source {args.inference_image_dir} --save-txt --source {args.inference_image_dir} --project label_yolo --name '' --exist-ok --nosave")
