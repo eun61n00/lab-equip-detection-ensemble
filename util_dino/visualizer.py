@@ -81,7 +81,7 @@ class COCOVisualizer():
             # else:
             #     savename = '{}/{}-{}-{}.png'.format(savedir, caption, int(tgt['image_id']), str(datetime.datetime.now()).replace(' ', '-'))
             savename = '{}/{}.png'.format(savedir, filename)
-            print("savename: {}".format(savename))
+            # print("savename: {}".format(savename))
             os.makedirs(os.path.dirname(savename), exist_ok=True)
             plt.savefig(savename)
         plt.close()
@@ -124,7 +124,6 @@ class COCOVisualizer():
             #     bbox_x, bbox_y, bbox_w, bbox_h = boxes[idx]
             #     # ax.text(bbox_x, bbox_y, _string, color='black', bbox={'facecolor': 'yellow', 'alpha': 1.0, 'pad': 1})
             #     ax.text(bbox_x, bbox_y, _string, color='black', bbox={'facecolor': color[idx], 'alpha': 0.6, 'pad': 1})
-            print(tgt.keys())
             for idx, (bl, score) in enumerate(zip(tgt['box_label'], tgt['scores'])):
                 _string = f"{bl} {score:.2f}"  # Confidence score formatted to two decimal places
                 bbox_x, bbox_y, bbox_w, bbox_h = boxes[idx]

@@ -21,8 +21,7 @@ from util_dino import box_ops
 
 threshold = 0.3
 
-# 추후 Face 클래스 제거
-CLASSES = ['background', 'Face', 'Face_Shield', 'Fire_Gloves', 'Gas_Mask_Full', 'Gas_Mask_Half', 
+CLASSES = ['background', 'Face_Shield', 'Fire_Gloves', 'Gas_Mask_Full', 'Gas_Mask_Half', 
            'Glasses', 'Hazmat_Coat', 'Lab_Coat', 'Latex_Gloves', 'Mask', 'No_Gloves', 
            'Normal_Shoes', 'Safety_Glasses', 'Safety_Hat', 'Sandal', 'Work_Gloves']
 
@@ -46,7 +45,7 @@ def rescale_bboxes(out_bbox, size):
     return b
 
 
-def detect(im, model, transform, filename, plot=False):
+def detect(im, model, transform, filename, plot=True):
     # mean-std normalize the input image (batch-size: 1)
     img = transform(im).unsqueeze(0)
 
@@ -88,13 +87,12 @@ def detect(im, model, transform, filename, plot=False):
         inference_class = CLASSES[cl]
         conf = p[cl]
         detections.append([x1, y1, x2, y2, conf, inference_class])
-        file_contents += f"{cl - 1} {x1} {y1} {x2} {y2}\n"
+        file_contents += f"{cl - 1} {x1} {y1} {x2} {y2} {conf}\n"
 
     # save inference result
     file_path = os.path.join('label_detr', filename.split('.')[0] + '.txt')
     with open(file_path, 'w') as file:
         file.write(file_contents)
-        # file.write(f"{cl} {x1} {y1} {x2} {y2}\n")
 
     if plot:
         plt.figure(figsize=(16,10))
@@ -111,7 +109,7 @@ def detect(im, model, transform, filename, plot=False):
             # ax.text(xmin, ymin, text, fontsize=10, color=c,
             #         bbox=dict(facecolor='white', alpha=0.5))
         plt.axis('off')
-        plt.savefig(f'inference_{filename}.png')
+        plt.savefig(f'./label_detr/image/{filename}.png')
         plt.close()
 
     return detections
@@ -138,9 +136,9 @@ if __name__ == '__main__':
     model_checkpoint_path = args.dino_weights
 
     args_dino = SLConfig.fromfile(model_config_path)
-    args_dino.device = 'cpu' 
+    args_dino.device = 'cuda:0'
     args_dino.dataset_file = 'coco'
-    args_dino.coco_path = '../훈련셋/실험복/' # 수정
+    args_dino.coco_path = '../dataset15/'
     args_dino.fix_size = False
 
     dino, criterion, postprocessors = build_model_main(args_dino)
@@ -161,39 +159,54 @@ if __name__ == '__main__':
         T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ])
 
+    # Inference from YOLO
+    os.system("git clone https://github.com/WongKinYiu/yolov7")
+    os.system(f"python ./yolov7/detect.py --weights {args.yolo_weights} --conf 0.25 --source {args.inference_image_dir} --project label_yolo --name '' --exist-ok --save-txt --save-conf")
+
     # Inference from DETR
-    # image_paths = [os.path.join(args.inference_image_dir, file) 
-    #             for file in os.listdir(args.inference_image_dir)
-    #             if os.path.splitext(file)[1].lower() in ('.png', '.jpg', '.jpeg')]
-    # total_image_count = len(os.listdir(args.inference_image_dir))
-    # for idx, file_path in enumerate(image_paths):
-    #     with Image.open(file_path) as img:
-    #         filename = os.path.splitext(file_path)[0].split('/')[-1]
-    #         detections_detr = detect(img, detr, transform, filename, args.inference_image_save) # inference from detr
-    #         cnt = Counter([d[-1] for d in detections_detr])
-    #         print(f"👀 (DETR {idx}/{len(image_paths)}) Detect {filename}: {[f'{k}: {v}' for k, v in cnt.items()]}")
+    # directory_path = './label_detr/image/'
+    # os.makedirs(directory_path, exist_ok=True)
+    image_paths = [os.path.join(args.inference_image_dir, file) 
+                for file in os.listdir(args.inference_image_dir)
+                if os.path.splitext(file)[1].lower() in ('.png', '.jpg', '.jpeg')]
+    total_image_count = len(os.listdir(args.inference_image_dir))
+    for idx, file_path in enumerate(image_paths):
+        with Image.open(file_path) as img:
+            filename = os.path.splitext(file_path)[0].split('/')[-1]
+            detections_detr = detect(img, detr, transform, filename, plot=True) # inference from detr
+            cnt = Counter([d[-1] for d in detections_detr])
+            print(f"👀 (DETR {idx}/{len(image_paths)}) Detect {filename}: {[f'{k}: {v}' for k, v in cnt.items()]}")
 
     # Inference from DINO
-    # dataset_val = build_dataset(image_set='val', args=args_dino)
-    # vslzr = COCOVisualizer()
+    dataset_val = build_dataset(image_set='val', args=args_dino)
+    vslzr = COCOVisualizer()
 
-    # for idx, (image, targets) in enumerate(dataset_val):
-    #     filename = dataset_val.get_file_name(idx)
-    #     output = dino.cuda()(image[None].cuda())
-    #     output = postprocessors['bbox'](output, torch.Tensor([[1.0, 1.0]]).cuda())[0]
-    #     scores = output['scores']
-    #     labels = output['labels']
-    #     boxes = box_ops.box_xyxy_to_cxcywh(output['boxes'])
-    #     select_mask = scores > threshold
-    #     box_label = [CLASSES[int(item)] for item in labels[select_mask]]
-    #     cnt = Counter(box_label)
-    #     print(f"🦕 (DINO {idx}/{len(dataset_val)}) Detect {filename}: {[f'{k}: {v}' for k, v in cnt.items()]}")
+    for idx, (image, targets) in enumerate(dataset_val):
+        filename = dataset_val.get_file_name(idx)
+        output = dino.cuda()(image[None].cuda())
+        output = postprocessors['bbox'](output, torch.Tensor([[1.0, 1.0]]).cuda())[0]
+        scores = output['scores']
+        labels = output['labels']
+        boxes = box_ops.box_xyxy_to_cxcywh(output['boxes'])
+        select_mask = scores > threshold
+        box_label = [CLASSES[int(item)] for item in labels[select_mask]]
+        cnt = Counter(box_label)
+        print(f"🦕 (DINO {idx}/{len(dataset_val)}) Detect {filename}: {[f'{k}: {v}' for k, v in cnt.items()]}")
 
-    #     # save inference result
-    #     file_path = os.path.join('label_dino', filename.split('.')[0] + '.txt')
-    #     with open(file_path, 'w') as file:
-    #         for i in range(len(box_label)):
-    #             file.write(f"{labels[select_mask][i] - 1} {boxes[i][0]} {boxes[i][1]} {boxes[i][2]} {boxes[i][3]}\n")
+        # save inference result
+        file_path = os.path.join('label_dino', filename.split('.')[0] + '.txt')
+        with open(file_path, 'w') as file:
+            for i in range(len(box_label)):
+                file.write(f"{labels[select_mask][i] - 1} {boxes[i][0]} {boxes[i][1]} {boxes[i][2]} {boxes[i][3]} {scores[select_mask][i]}\n")
+                vslzr = COCOVisualizer()
+                pred_dict = {
+                    'boxes': boxes[select_mask],
+                    'size': targets['size'],
+                    'box_label': box_label,
+                    'image_id': targets['image_id'],
+                    'scores': scores[select_mask]
+                }
+                vslzr.visualize(image, pred_dict, savedir="./label_dino/image", filename=filename.split('.')[0])
 
         # compare with ground truth
         # gt_file_path = os.path.join(args.inference_image_dir, filename.split('.')[0] + '.txt')
@@ -214,7 +227,3 @@ if __name__ == '__main__':
         #         }
         #         vslzr.visualize(image, pred_dict, savedir="detr_wrong_inference", filename=filename.split('.')[0])
         #         print(f"    *Wrong Inference (DINO {idx}/{len(dataset_val)}) Ground Truth {filename}:  {[f'{k}: {v}' for k, v in gt_cnt.items()]}")
-
-    # Inference from YOLO
-    os.system("git clone https://github.com/WongKinYiu/yolov7")
-    os.system(f"python ../yolov7/detect.py --weights {args.yolo_weights} --conf 0.25 --source {args.inference_image_dir} --save-txt --source {args.inference_image_dir} --project label_yolo --name '' --exist-ok --nosave")
